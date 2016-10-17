@@ -34,10 +34,18 @@ size_t loopback_buffer::get_packet(void *buf, size_t buf_size){
 }
 
 void loopback_buffer::run(){
+#ifdef DEBUG
+	printf("Starting loopack buffer on port %u\n", port);
+#endif
 	listen();
 }
 
 void loopback_buffer::listen(){
+
+#ifdef DEBUG
+	printf("Assigning callback for port %u\n",port);
+#endif
+
 	// Start listening on loopback port and adding to queue
 	uint8_t *buffer = new uint8_t[max_size];
 	sock.async_receive(
@@ -68,7 +76,7 @@ void loopback_buffer::handle_msg(uint8_t *buffer, size_t nbytes){
 	msg_queue.push(new_packet);
 
 	// Listen for next packet
-	run();
+	listen();
 }
 
 // Pop everything off
@@ -113,8 +121,13 @@ void multistream_server::serve_queues(std::vector<struct stream> &streams){
 
 	uint8_t buffer[MAX_PACKET_SIZE];
 
+	// Set loop time
+	const std::chrono::nanoseconds period_ns = 1e9;
+
 	// Loop every xxx microseconds
 	while (true) {
+		const hrc::time_point start_time = hrc::now();
+
 		// Cycle through all queues
 		std::vector<size_t> count(count_master);
 		bool all_sent = false;
@@ -126,13 +139,18 @@ void multistream_server::serve_queues(std::vector<struct stream> &streams){
 
 				// Send and decrement counter
 				size_t nbytes = streams[i].buffer->get_packet(buffer, MAX_PACKET_SIZE);
-
-				// Don't use for
 				if (!nbytes) continue;
 				count[i]--;
 
+				send_function((void*)&buffer, nbytes);
+
 			}
 		}
+		const hrc::time_point sleep_time = period_ns - (hrc::now() - start);
+#ifdef DEBUG
+		printf("Sleeping for %u ns\n", sleep_time);
+#endif
+		boost::this_thread::sleep
 
 
 	}
@@ -145,13 +163,14 @@ void multistream_server::run(){
 	for (struct stream &s : lb_buffers_B)
 		s.buffer->run();
 
-	// Start the io_service
-	io_serv.poll();
 
 	// TODO also sort by interface?
 
 	// Start serving the queues
 	boost::thread serve_A(boost::bind(&multistream_server::serve_queues,this, lb_buffers_A));
+
+	// Start the io_service
+	io_serv.run();
 
 	// Wait for them to end
 	serve_A.join();

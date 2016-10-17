@@ -10,9 +10,11 @@
 // Standard libs
 #include <queue>
 #include <stdint.h>
+#include <chrono>
 #include <vector>
 #include <stdlib.h>
 #include <exception>
+#include <functional>
 
 #include <boost/asio.hpp>
 #include <boost/thread.hpp>
@@ -28,6 +30,9 @@ struct buffered_packet {
 	size_t len = 0;
 	uint8_t *data = NULL;
 };
+
+// Get time in ns
+typedef std::chrono::high_resolution_clock hrc;
 
 /*
  * Class that listens on a specific UDP port, buffers messages, and returns
@@ -84,7 +89,7 @@ struct stream_info {
 	size_t packets_per_int; // packets per interval
 	avb_class priority_class; // CLASS_A or CLASS_B
 	uint8_t dest_mac[6]; // Destination mac address
-	uint8_t send_max[6]; // Must associate with own interface
+	uint8_t send_mac[6]; // Must associate with own interface
 };
 
 /*
@@ -106,7 +111,14 @@ class multistream_server {
 	// Connects to listeners on loopback ports
 	boost::asio::io_service io_serv;
 
+	// Send function
+	typedef std::function<void (void *packet, size_t packetsz)> send_func;
+	send_func send_function = NULL;
+
 public:
+	// Initialize with the send function
+	multistream_server(send_func func) : send_function(func) {};
+
 	// Return true on success
 	bool add_stream(struct stream_info sinfo, unsigned int loopback_port);
 
